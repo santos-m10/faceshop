@@ -125,10 +125,8 @@ async function tryEmailLogin() {
   if (!email) { toast('Informe o email', 'error'); return; }
 
   try {
-    // Demo: find user by email via face-login endpoint doesn't apply
-    // We do a simplified demo fetch
-    const res = await fetch('http://localhost:5000/api/admin/users');
-    const users = await res.json();
+    // Busca usuários no backend hospedado via API compartilhada
+    const users = await api.getUsers();
     const user = users.find(u => u.email.toLowerCase() === email.toLowerCase());
     if (user) {
       Session.set(user);

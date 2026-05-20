@@ -7,6 +7,7 @@ const api = {
     try {
       const opts = {
         method,
+        mode: 'cors',
         headers: { 'Content-Type': 'application/json' }
       };
       if (body) opts.body = JSON.stringify(body);
