@@ -12,7 +12,8 @@ CORS(app)
 
 
 
-DB_PATH = 'faceshop.db'
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(BASE_DIR, 'faceshop.db')
 
 # ─── DATABASE SETUP ───────────────────────────────────────────────────────────
 
@@ -107,7 +108,6 @@ def init_db():
     conn.commit()
     conn.close()
     
-init_db()
 
 # ─── AUTH ROUTES ──────────────────────────────────────────────────────────────
 
@@ -413,6 +413,9 @@ def serve(path):
     if path and os.path.exists(os.path.join(app.static_folder, path)):
         return send_from_directory(app.static_folder, path)
     return send_from_directory(app.static_folder, 'index.html')
+
+
+init_db()
 
 if __name__ == '__main__':
     print("✅ FaceShop backend iniciado em http://localhost:5000")
