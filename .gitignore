@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+
+# Banco
+*.db
+
+# VSCode
+.vscode/
+
+# Ambiente
+.env
