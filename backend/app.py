@@ -10,6 +10,8 @@ from datetime import datetime
 app = Flask(__name__, static_folder='../frontend')
 CORS(app)
 
+
+
 DB_PATH = 'faceshop.db'
 
 # ─── DATABASE SETUP ───────────────────────────────────────────────────────────
@@ -104,6 +106,8 @@ def init_db():
 
     conn.commit()
     conn.close()
+    
+init_db()
 
 # ─── AUTH ROUTES ──────────────────────────────────────────────────────────────
 
@@ -411,6 +415,5 @@ def serve(path):
     return send_from_directory(app.static_folder, 'index.html')
 
 if __name__ == '__main__':
-    init_db()
     print("✅ FaceShop backend iniciado em http://localhost:5000")
-    app.run(debug=True, port=5000)
+    app.run(host="0.0.0.0", port=5000)
