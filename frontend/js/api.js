@@ -1,5 +1,6 @@
 // ── API CLIENT ────────────────────────────────────────────────────────────────
 const API_URL = "https://faceshop.onrender.com";
+const API_BASE = API_URL + "/api";
 
 const api = {
   async req(method, path, body) {
