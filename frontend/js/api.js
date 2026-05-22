@@ -43,6 +43,7 @@ const api = {
   // Auth
   register: (d) => api.req('POST', '/auth/register', d),
   faceLogin: (d) => api.req('POST', '/auth/face-login', d),
+  emailLogin: (d) => api.req('POST', '/auth/email-login', d),
   updateFace: (d) => api.req('POST', '/auth/update-face', d),
 
   // Products

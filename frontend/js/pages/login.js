@@ -121,5 +121,21 @@ async function tryFaceLogin() {
 }
 
 async function tryEmailLogin() {
-  toast('Para acessar, utilize o reconhecimento facial ou registre-se.', 'info');
+  const emailInput = document.getElementById('loginEmail');
+  const email = emailInput?.value?.trim();
+  if (!email) {
+    toast('Informe um email válido', 'error');
+    return;
+  }
+
+  try {
+    const result = await api.emailLogin({ email });
+    if (result.success) {
+      Session.set(result.user);
+      toast(`Bem-vindo(a), ${result.user.name}!`, 'success');
+      App.initApp();
+    }
+  } catch (e) {
+    toast(e.message || 'Erro no login por email.', 'error');
+  }
 }

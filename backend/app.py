@@ -170,6 +170,26 @@ def face_login():
 
     return jsonify({'success': False, 'error': 'Rosto não reconhecido'}), 401
 
+@app.route('/api/auth/email-login', methods=['POST'])
+def email_login():
+    data = request.json
+    email = data.get('email')
+    if not email:
+        return jsonify({'success': False, 'error': 'Email não fornecido'}), 400
+
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT * FROM users WHERE email=? AND active=1", (email,))
+    user = c.fetchone()
+    conn.close()
+
+    if not user:
+        return jsonify({'success': False, 'error': 'Usuário não encontrado'}), 401
+
+    u = dict(user)
+    u.pop('face_descriptor', None)
+    return jsonify({'success': True, 'user': u})
+
 @app.route('/api/auth/update-face', methods=['POST'])
 def update_face():
     data = request.json
