@@ -121,21 +121,5 @@ async function tryFaceLogin() {
 }
 
 async function tryEmailLogin() {
-  const email = document.getElementById('loginEmail')?.value?.trim();
-  if (!email) { toast('Informe o email', 'error'); return; }
-
-  try {
-    // Busca usuários no backend hospedado via API compartilhada
-    const users = await api.getUsers();
-    const user = users.find(u => u.email.toLowerCase() === email.toLowerCase());
-    if (user) {
-      Session.set(user);
-      toast(`Bem-vindo(a), ${user.name}!`, 'success');
-      App.initApp();
-    } else {
-      toast('Usuário não encontrado', 'error');
-    }
-  } catch (e) {
-    toast('Erro de conexão com o servidor', 'error');
-  }
+  toast('Para acessar, utilize o reconhecimento facial ou registre-se.', 'info');
 }

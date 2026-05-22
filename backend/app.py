@@ -94,14 +94,14 @@ def init_db():
     c.execute("SELECT COUNT(*) FROM products")
     if c.fetchone()[0] == 0:
         products = [
-            (str(uuid.uuid4()), 'AirPods Pro Max', 'Fone premium com cancelamento de ruído', 4999.99, 50, 'Eletrônicos', 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=400'),
-            (str(uuid.uuid4()), 'MacBook Air M3', 'Laptop ultrafino com chip M3', 12999.99, 20, 'Computadores', 'https://images.unsplash.com/photo-1517336714731-489689fd1ca8?w=400'),
-            (str(uuid.uuid4()), 'iPhone 16 Pro', 'Smartphone flagship da Apple', 9499.99, 35, 'Smartphones', 'https://images.unsplash.com/photo-1601784551446-20c9e07cdbdb?w=400'),
-            (str(uuid.uuid4()), 'Apple Watch Ultra', 'Smartwatch premium para aventuras', 6199.99, 15, 'Wearables', 'https://images.unsplash.com/photo-1546868871-7041f2a55e12?w=400'),
-            (str(uuid.uuid4()), 'iPad Pro 13"', 'Tablet profissional com chip M4', 10299.99, 25, 'Tablets', 'https://images.unsplash.com/photo-1544244015-0df4b3ffc6b0?w=400'),
-            (str(uuid.uuid4()), 'Sony WH-1000XM5', 'Fone com melhor cancelamento do mercado', 1899.99, 40, 'Eletrônicos', 'https://images.unsplash.com/photo-1583394838336-acd977736f90?w=400'),
-            (str(uuid.uuid4()), 'Samsung Galaxy S25', 'Flagship Android com IA integrada', 7999.99, 30, 'Smartphones', 'https://images.unsplash.com/photo-1610945265064-0e34e5519bbf?w=400'),
-            (str(uuid.uuid4()), 'Dell XPS 15', 'Notebook premium para criadores', 11499.99, 18, 'Computadores', 'https://images.unsplash.com/photo-1593642702821-c8da6771f0c6?w=400'),
+            (str(uuid.uuid4()), 'AirPods Pro Max', 'Fone premium com cancelamento de ruído', 4999.99, 50, 'Eletrônicos', 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=300&q=60&auto=format'),
+            (str(uuid.uuid4()), 'MacBook Air M3', 'Laptop ultrafino com chip M3', 12999.99, 20, 'Computadores', 'https://images.unsplash.com/photo-1517336714731-489689fd1ca8?w=300&q=60&auto=format'),
+            (str(uuid.uuid4()), 'iPhone 16 Pro', 'Smartphone flagship da Apple', 9499.99, 35, 'Smartphones', 'https://images.unsplash.com/photo-1601784551446-20c9e07cdbdb?w=300&q=60&auto=format'),
+            (str(uuid.uuid4()), 'Apple Watch Ultra', 'Smartwatch premium para aventuras', 6199.99, 15, 'Wearables', 'https://images.unsplash.com/photo-1546868871-7041f2a55e12?w=300&q=60&auto=format'),
+            (str(uuid.uuid4()), 'iPad Pro 13"', 'Tablet profissional com chip M4', 10299.99, 25, 'Tablets', 'https://images.unsplash.com/photo-1544244015-0df4b3ffc6b0?w=300&q=60&auto=format'),
+            (str(uuid.uuid4()), 'Sony WH-1000XM5', 'Fone com melhor cancelamento do mercado', 1899.99, 40, 'Eletrônicos', 'https://images.unsplash.com/photo-1583394838336-acd977736f90?w=300&q=60&auto=format'),
+            (str(uuid.uuid4()), 'Samsung Galaxy S25', 'Flagship Android com IA integrada', 7999.99, 30, 'Smartphones', 'https://images.unsplash.com/photo-1610945265064-0e34e5519bbf?w=300&q=60&auto=format'),
+            (str(uuid.uuid4()), 'Dell XPS 15', 'Notebook premium para criadores', 11499.99, 18, 'Computadores', 'https://images.unsplash.com/photo-1593642702821-c8da6771f0c6?w=300&q=60&auto=format'),
         ]
         c.executemany("INSERT INTO products (id, name, description, price, stock, category, image) VALUES (?,?,?,?,?,?,?)", products)
 

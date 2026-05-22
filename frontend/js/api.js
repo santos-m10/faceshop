@@ -2,18 +2,37 @@
 const API_URL = "https://faceshop.onrender.com";
 const API_BASE = API_URL + "/api";
 
+// Cache simples para requisições GET
+const apiCache = new Map();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutos
+
 const api = {
   async req(method, path, body) {
     try {
+      // Verificar cache para requisições GET
+      if (method === 'GET') {
+        const cached = apiCache.get(path);
+        if (cached && Date.now() - cached.time < CACHE_TTL) {
+          return cached.data;
+        }
+      }
+
       const opts = {
         method,
         mode: 'cors',
         headers: { 'Content-Type': 'application/json' }
       };
       if (body) opts.body = JSON.stringify(body);
+      
       const res = await fetch(API_BASE + path, opts);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Erro na requisição');
+      
+      // Cachear resultado se for GET
+      if (method === 'GET') {
+        apiCache.set(path, { data, time: Date.now() });
+      }
+      
       return data;
     } catch (e) {
       console.error('API Error:', e);

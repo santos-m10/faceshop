@@ -95,6 +95,7 @@ function renderProductGrid(products) {
   grid.innerHTML = products.map(p => `
     <div class="product-card" onclick="showProductModal('${p.id}')">
       <img class="product-img" src="${p.image}" alt="${p.name}"
+        loading="lazy"
         onerror="this.src='https://via.placeholder.com/400x200/141c2e/00F5D4?text=📦'">
       <div class="product-body">
         <div class="product-category">${p.category || 'Produto'}</div>

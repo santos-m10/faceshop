@@ -6,12 +6,19 @@ const Auth = {
   async loadModels() {
     const MODEL_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.13/model';
     try {
-      await Promise.all([
+      // Carregar modelos em paralelo
+      const modelPromises = [
         faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
         faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
         faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
-        faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL),
-      ]);
+      ];
+      
+      // Carregar expressões apenas se necessário
+      if (navigator.deviceMemory >= 4) {
+        modelPromises.push(faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL));
+      }
+      
+      await Promise.all(modelPromises);
       this.modelsLoaded = true;
       console.log('✅ Modelos face-api carregados');
       return true;

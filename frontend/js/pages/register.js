@@ -79,8 +79,8 @@ async function tryRegister() {
   const role = document.getElementById('registerRole')?.value;
   const status = document.getElementById('registerStatus');
 
-  if (!name) { toast('Informe seu nome', 'error'); return; }
-  if (!email) { toast('Informe seu email', 'error'); return; }
+  if (!name || name.length < 2) { toast('Informe seu nome completo (mínimo 2 caracteres)', 'error'); return; }
+  if (!email || !email.includes('@')) { toast('Informe um email válido', 'error'); return; }
   if (!role) { toast('Informe o tipo de conta', 'error'); return; }
 
   if (status) status.textContent = '🔍 Capturando rosto...';
@@ -109,10 +109,16 @@ async function tryRegister() {
       Auth.stopCamera();
       Session.set(result.user);
       toast(`Conta criada. Bem-vindo(a), ${result.user.name}!`, 'success');
+      // Aguardar um pouco antes de redirecionar
+      await new Promise(r => setTimeout(r, 800));
       App.initApp();
     }
   } catch (e) {
-    toast(e.message || 'Erro ao cadastrar. Tente novamente.', 'error');
+    if (e.message.includes('Email já cadastrado')) {
+      toast('Este email já está registrado. Faça login com seu rosto.', 'error');
+    } else {
+      toast(e.message || 'Erro ao cadastrar. Tente novamente.', 'error');
+    }
     if (status) status.textContent = '❌ Erro ao cadastrar. Verifique os dados e tente novamente.';
   }
 }
