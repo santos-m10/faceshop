@@ -1,11 +1,9 @@
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import sqlite3
-import base64
 import json
 import os
 import uuid
-from datetime import datetime
 
 app = Flask(__name__, static_folder='../frontend')
 CORS(app)
@@ -13,14 +11,26 @@ CORS(app)
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(BASE_DIR, 'faceshop.db')
+DB_PATH = os.environ.get('FACESHOP_DB_PATH', os.path.join(BASE_DIR, 'faceshop.db'))
 
 # ─── DATABASE SETUP ───────────────────────────────────────────────────────────
 
 def get_db():
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=10)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
     return conn
+
+def get_json_data():
+    return request.get_json(silent=True) or {}
+
+def normalize_email(email):
+    return (email or '').strip().lower()
+
+def public_user(row):
+    user = dict(row)
+    user.pop('face_descriptor', None)
+    return user
 
 def init_db():
     conn = get_db()
@@ -113,32 +123,42 @@ def init_db():
 
 @app.route('/api/auth/register', methods=['POST'])
 def register():
-    data = request.json
+    data = get_json_data()
+    name = (data.get('name') or '').strip()
+    email = normalize_email(data.get('email'))
+    role = data.get('role')
+    face_descriptor = data.get('faceDescriptor')
+
+    if len(name) < 2:
+        return jsonify({'success': False, 'error': 'Nome invalido'}), 400
+    if '@' not in email:
+        return jsonify({'success': False, 'error': 'Email invalido'}), 400
+    if role not in ('cliente', 'vendedor', 'admin'):
+        return jsonify({'success': False, 'error': 'Tipo de conta invalido'}), 400
+
     conn = get_db()
     c = conn.cursor()
     try:
         user_id = str(uuid.uuid4())
         c.execute(
             "INSERT INTO users (id, name, email, role, face_descriptor, avatar) VALUES (?,?,?,?,?,?)",
-            (user_id, data['name'], data['email'], data['role'],
-             json.dumps(data.get('faceDescriptor')), data.get('avatar'))
+            (user_id, name, email, role,
+             json.dumps(face_descriptor) if face_descriptor is not None else None, data.get('avatar'))
         )
         conn.commit()
         c.execute("SELECT * FROM users WHERE id=?", (user_id,))
-        user = dict(c.fetchone())
-        user.pop('face_descriptor', None)
-        return jsonify({'success': True, 'user': user})
+        return jsonify({'success': True, 'user': public_user(c.fetchone())})
     except sqlite3.IntegrityError:
-        return jsonify({'success': False, 'error': 'Email já cadastrado'}), 400
+        conn.rollback()
+        return jsonify({'success': False, 'error': 'Email ja cadastrado'}), 400
     finally:
         conn.close()
-
 @app.route('/api/auth/face-login', methods=['POST'])
 def face_login():
-    data = request.json
+    data = get_json_data()
     descriptor = data.get('faceDescriptor')
-    if not descriptor:
-        return jsonify({'success': False, 'error': 'Descriptor não fornecido'}), 400
+    if not isinstance(descriptor, list):
+        return jsonify({'success': False, 'error': 'Descriptor nao fornecido'}), 400
 
     conn = get_db()
     c = conn.cursor()
@@ -156,26 +176,26 @@ def face_login():
     THRESHOLD = 0.5
 
     for user in users:
-        stored = json.loads(user['face_descriptor'])
-        if stored:
+        try:
+            stored = json.loads(user['face_descriptor'])
+        except (TypeError, json.JSONDecodeError):
+            continue
+        if isinstance(stored, list) and len(stored) == len(descriptor):
             dist = euclidean_distance(descriptor, stored)
             if dist < best_dist:
                 best_dist = dist
                 best_match = user
 
     if best_match and best_dist < THRESHOLD:
-        u = dict(best_match)
-        u.pop('face_descriptor', None)
-        return jsonify({'success': True, 'user': u, 'distance': best_dist})
+        return jsonify({'success': True, 'user': public_user(best_match), 'distance': best_dist})
 
-    return jsonify({'success': False, 'error': 'Rosto não reconhecido'}), 401
-
+    return jsonify({'success': False, 'error': 'Rosto nao reconhecido'}), 401
 @app.route('/api/auth/email-login', methods=['POST'])
 def email_login():
-    data = request.json
-    email = data.get('email')
+    data = get_json_data()
+    email = normalize_email(data.get('email'))
     if not email:
-        return jsonify({'success': False, 'error': 'Email não fornecido'}), 400
+        return jsonify({'success': False, 'error': 'Email nao fornecido'}), 400
 
     conn = get_db()
     c = conn.cursor()
@@ -184,34 +204,43 @@ def email_login():
     conn.close()
 
     if not user:
-        return jsonify({'success': False, 'error': 'Usuário não encontrado'}), 401
+        return jsonify({'success': False, 'error': 'Usuario nao encontrado'}), 401
 
-    u = dict(user)
-    u.pop('face_descriptor', None)
-    return jsonify({'success': True, 'user': u})
-
+    return jsonify({'success': True, 'user': public_user(user)})
 @app.route('/api/auth/update-face', methods=['POST'])
 def update_face():
-    data = request.json
+    data = get_json_data()
+    if not data.get('userId') or not isinstance(data.get('faceDescriptor'), list):
+        return jsonify({'success': False, 'error': 'Dados invalidos'}), 400
+
     conn = get_db()
     c = conn.cursor()
     c.execute("UPDATE users SET face_descriptor=? WHERE id=?",
               (json.dumps(data['faceDescriptor']), data['userId']))
     conn.commit()
+    updated = c.rowcount
     conn.close()
+    if not updated:
+        return jsonify({'success': False, 'error': 'Usuario nao encontrado'}), 404
     return jsonify({'success': True})
-
 # ─── PRODUCTS ROUTES ──────────────────────────────────────────────────────────
 
 @app.route('/api/products', methods=['GET'])
 def get_products():
     category = request.args.get('category')
+    include_inactive = request.args.get('include_inactive') in ('1', 'true', 'True')
     conn = get_db()
     c = conn.cursor()
+    where = [] if include_inactive else ['active=1']
+    values = []
     if category:
-        c.execute("SELECT * FROM products WHERE active=1 AND category=? ORDER BY created_at DESC", (category,))
-    else:
-        c.execute("SELECT * FROM products WHERE active=1 ORDER BY created_at DESC")
+        where.append('category=?')
+        values.append(category)
+    sql = 'SELECT * FROM products'
+    if where:
+        sql += ' WHERE ' + ' AND '.join(where)
+    sql += ' ORDER BY created_at DESC'
+    c.execute(sql, values)
     products = [dict(r) for r in c.fetchall()]
     conn.close()
     return jsonify(products)
@@ -225,39 +254,79 @@ def get_product(product_id):
     conn.close()
     if p:
         return jsonify(dict(p))
-    return jsonify({'error': 'Produto não encontrado'}), 404
+    return jsonify({'error': 'Produto nao encontrado'}), 404
 
 @app.route('/api/products', methods=['POST'])
 def create_product():
-    data = request.json
+    data = get_json_data()
+    name = (data.get('name') or '').strip()
+    if not name:
+        return jsonify({'success': False, 'error': 'Nome do produto e obrigatorio'}), 400
+    try:
+        price = float(data.get('price'))
+        stock = int(data.get('stock', 0))
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'Preco ou estoque invalido'}), 400
+    if price < 0 or stock < 0:
+        return jsonify({'success': False, 'error': 'Preco e estoque nao podem ser negativos'}), 400
+
     conn = get_db()
     c = conn.cursor()
-    pid = str(uuid.uuid4())
-    c.execute(
-        "INSERT INTO products (id, name, description, price, stock, category, image, seller_id) VALUES (?,?,?,?,?,?,?,?)",
-        (pid, data['name'], data.get('description'), float(data['price']),
-         int(data.get('stock', 0)), data.get('category'), data.get('image'), data.get('seller_id'))
-    )
-    conn.commit()
-    c.execute("SELECT * FROM products WHERE id=?", (pid,))
-    product = dict(c.fetchone())
-    conn.close()
-    return jsonify({'success': True, 'product': product})
+    try:
+        pid = str(uuid.uuid4())
+        c.execute(
+            "INSERT INTO products (id, name, description, price, stock, category, image, seller_id) VALUES (?,?,?,?,?,?,?,?)",
+            (pid, name, data.get('description'), price, stock,
+             data.get('category'), data.get('image'), data.get('seller_id'))
+        )
+        conn.commit()
+        c.execute("SELECT * FROM products WHERE id=?", (pid,))
+        product = dict(c.fetchone())
+        return jsonify({'success': True, 'product': product})
+    except sqlite3.IntegrityError as e:
+        conn.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 400
+    finally:
+        conn.close()
 
 @app.route('/api/products/<product_id>', methods=['PUT'])
 def update_product(product_id):
-    data = request.json
-    conn = get_db()
-    c = conn.cursor()
+    data = get_json_data()
+    allowed = {'name', 'description', 'price', 'stock', 'category', 'image', 'active'}
     fields = []
     values = []
-    for field in ['name', 'description', 'price', 'stock', 'category', 'image', 'active']:
-        if field in data:
-            fields.append(f"{field}=?")
-            values.append(data[field])
+
+    for field in allowed:
+        if field not in data:
+            continue
+        value = data[field]
+        try:
+            if field == 'price':
+                value = float(value)
+                if value < 0:
+                    raise ValueError
+            elif field == 'stock':
+                value = int(value)
+                if value < 0:
+                    raise ValueError
+            elif field == 'active':
+                value = 1 if value else 0
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'error': f'Campo {field} invalido'}), 400
+        fields.append(f"{field}=?")
+        values.append(value)
+
+    if not fields:
+        return jsonify({'success': False, 'error': 'Nenhum campo para atualizar'}), 400
+
     values.append(product_id)
+    conn = get_db()
+    c = conn.cursor()
     c.execute(f"UPDATE products SET {', '.join(fields)} WHERE id=?", values)
     conn.commit()
+    if c.rowcount == 0:
+        conn.close()
+        return jsonify({'success': False, 'error': 'Produto nao encontrado'}), 404
     c.execute("SELECT * FROM products WHERE id=?", (product_id,))
     product = dict(c.fetchone())
     conn.close()
@@ -269,9 +338,11 @@ def delete_product(product_id):
     c = conn.cursor()
     c.execute("UPDATE products SET active=0 WHERE id=?", (product_id,))
     conn.commit()
+    updated = c.rowcount
     conn.close()
+    if not updated:
+        return jsonify({'success': False, 'error': 'Produto nao encontrado'}), 404
     return jsonify({'success': True})
-
 # ─── CART ROUTES ──────────────────────────────────────────────────────────────
 
 @app.route('/api/cart/<client_id>', methods=['GET'])
@@ -289,33 +360,65 @@ def get_cart(client_id):
 
 @app.route('/api/cart', methods=['POST'])
 def add_to_cart():
-    data = request.json
+    data = get_json_data()
+    client_id = data.get('client_id')
+    product_id = data.get('product_id')
+    try:
+        quantity = int(data.get('quantity', 1))
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'Quantidade invalida'}), 400
+    if not client_id or not product_id or quantity <= 0:
+        return jsonify({'success': False, 'error': 'Dados do carrinho invalidos'}), 400
+
     conn = get_db()
     c = conn.cursor()
+    c.execute("SELECT stock FROM products WHERE id=? AND active=1", (product_id,))
+    product = c.fetchone()
+    if not product:
+        conn.close()
+        return jsonify({'success': False, 'error': 'Produto nao encontrado'}), 404
+    if product['stock'] < quantity:
+        conn.close()
+        return jsonify({'success': False, 'error': 'Estoque insuficiente'}), 400
+
     c.execute("SELECT id, quantity FROM cart WHERE client_id=? AND product_id=?",
-              (data['client_id'], data['product_id']))
+              (client_id, product_id))
     existing = c.fetchone()
     if existing:
         c.execute("UPDATE cart SET quantity=quantity+? WHERE id=?",
-                  (data.get('quantity', 1), existing['id']))
+                  (quantity, existing['id']))
     else:
         c.execute("INSERT INTO cart (id, client_id, product_id, quantity) VALUES (?,?,?,?)",
-                  (str(uuid.uuid4()), data['client_id'], data['product_id'], data.get('quantity', 1)))
+                  (str(uuid.uuid4()), client_id, product_id, quantity))
     conn.commit()
     conn.close()
     return jsonify({'success': True})
 
 @app.route('/api/cart/<item_id>', methods=['PUT'])
 def update_cart_item(item_id):
-    data = request.json
+    data = get_json_data()
+    try:
+        quantity = int(data.get('quantity', 0))
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'Quantidade invalida'}), 400
+
     conn = get_db()
     c = conn.cursor()
-    if data.get('quantity', 0) <= 0:
+    if quantity <= 0:
         c.execute("DELETE FROM cart WHERE id=?", (item_id,))
     else:
-        c.execute("UPDATE cart SET quantity=? WHERE id=?", (data['quantity'], item_id))
+        c.execute("""
+            UPDATE cart
+            SET quantity=?
+            WHERE id=? AND ? <= (
+                SELECT stock FROM products WHERE products.id = cart.product_id
+            )
+        """, (quantity, item_id, quantity))
     conn.commit()
+    updated = c.rowcount
     conn.close()
+    if not updated and quantity > 0:
+        return jsonify({'success': False, 'error': 'Item nao encontrado ou estoque insuficiente'}), 400
     return jsonify({'success': True})
 
 @app.route('/api/cart/<item_id>', methods=['DELETE'])
@@ -326,29 +429,70 @@ def remove_cart_item(item_id):
     conn.commit()
     conn.close()
     return jsonify({'success': True})
-
 # ─── ORDERS ROUTES ────────────────────────────────────────────────────────────
 
 @app.route('/api/orders', methods=['POST'])
 def create_order():
-    data = request.json
+    data = get_json_data()
+    client_id = data.get('client_id')
+    items = data.get('items') or []
+    payment_method = data.get('payment_method') or 'pix'
+    if not client_id or not items:
+        return jsonify({'success': False, 'error': 'Pedido invalido'}), 400
+
+    normalized_items = []
+    try:
+        for item in items:
+            normalized_items.append({
+                'product_id': item['product_id'],
+                'quantity': int(item['quantity']),
+                'unit_price': float(item['unit_price']),
+            })
+    except (KeyError, TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'Itens do pedido invalidos'}), 400
+    if any(i['quantity'] <= 0 or i['unit_price'] < 0 for i in normalized_items):
+        return jsonify({'success': False, 'error': 'Itens do pedido invalidos'}), 400
+
     conn = get_db()
     c = conn.cursor()
-    order_id = str(uuid.uuid4())
-    c.execute(
-        "INSERT INTO orders (id, client_id, total, payment_method, payment_status, status) VALUES (?,?,?,?,?,?)",
-        (order_id, data['client_id'], data['total'], data['payment_method'], 'aprovado', 'confirmado')
-    )
-    for item in data['items']:
+    try:
+        c.execute('BEGIN IMMEDIATE')
+        c.execute("SELECT id FROM users WHERE id=? AND role='cliente' AND active=1", (client_id,))
+        if not c.fetchone():
+            conn.rollback()
+            return jsonify({'success': False, 'error': 'Cliente nao encontrado'}), 404
+
+        total = 0
+        for item in normalized_items:
+            c.execute("SELECT stock FROM products WHERE id=? AND active=1", (item['product_id'],))
+            product = c.fetchone()
+            if not product:
+                conn.rollback()
+                return jsonify({'success': False, 'error': 'Produto nao encontrado'}), 404
+            if product['stock'] < item['quantity']:
+                conn.rollback()
+                return jsonify({'success': False, 'error': 'Estoque insuficiente'}), 400
+            total += item['quantity'] * item['unit_price']
+
+        order_id = str(uuid.uuid4())
         c.execute(
-            "INSERT INTO order_items (id, order_id, product_id, quantity, unit_price) VALUES (?,?,?,?,?)",
-            (str(uuid.uuid4()), order_id, item['product_id'], item['quantity'], item['unit_price'])
+            "INSERT INTO orders (id, client_id, total, payment_method, payment_status, status) VALUES (?,?,?,?,?,?)",
+            (order_id, client_id, total, payment_method, 'aprovado', 'confirmado')
         )
-        c.execute("UPDATE products SET stock=stock-? WHERE id=?", (item['quantity'], item['product_id']))
-    c.execute("DELETE FROM cart WHERE client_id=?", (data['client_id'],))
-    conn.commit()
-    conn.close()
-    return jsonify({'success': True, 'order_id': order_id})
+        for item in normalized_items:
+            c.execute(
+                "INSERT INTO order_items (id, order_id, product_id, quantity, unit_price) VALUES (?,?,?,?,?)",
+                (str(uuid.uuid4()), order_id, item['product_id'], item['quantity'], item['unit_price'])
+            )
+            c.execute("UPDATE products SET stock=stock-? WHERE id=?", (item['quantity'], item['product_id']))
+        c.execute("DELETE FROM cart WHERE client_id=?", (client_id,))
+        conn.commit()
+        return jsonify({'success': True, 'order_id': order_id})
+    except sqlite3.Error as e:
+        conn.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 400
+    finally:
+        conn.close()
 
 @app.route('/api/orders/<client_id>', methods=['GET'])
 def get_orders(client_id):
@@ -365,7 +509,6 @@ def get_orders(client_id):
         order['items'] = [dict(i) for i in c.fetchall()]
     conn.close()
     return jsonify(orders)
-
 # ─── ADMIN ROUTES ─────────────────────────────────────────────────────────────
 
 @app.route('/api/admin/users', methods=['GET'])
@@ -379,21 +522,49 @@ def get_users():
 
 @app.route('/api/admin/users/<user_id>', methods=['PUT'])
 def update_user(user_id):
-    data = request.json
-    conn = get_db()
-    c = conn.cursor()
+    data = get_json_data()
     fields = []
     values = []
-    for field in ['name', 'email', 'role', 'active']:
-        if field in data:
-            fields.append(f"{field}=?")
-            values.append(data[field])
-    values.append(user_id)
-    c.execute(f"UPDATE users SET {', '.join(fields)} WHERE id=?", values)
-    conn.commit()
-    conn.close()
-    return jsonify({'success': True})
 
+    if 'name' in data:
+        name = (data.get('name') or '').strip()
+        if len(name) < 2:
+            return jsonify({'success': False, 'error': 'Nome invalido'}), 400
+        fields.append('name=?')
+        values.append(name)
+    if 'email' in data:
+        email = normalize_email(data.get('email'))
+        if '@' not in email:
+            return jsonify({'success': False, 'error': 'Email invalido'}), 400
+        fields.append('email=?')
+        values.append(email)
+    if 'role' in data:
+        if data.get('role') not in ('cliente', 'vendedor', 'admin'):
+            return jsonify({'success': False, 'error': 'Tipo de conta invalido'}), 400
+        fields.append('role=?')
+        values.append(data['role'])
+    if 'active' in data:
+        fields.append('active=?')
+        values.append(1 if data.get('active') else 0)
+
+    if not fields:
+        return jsonify({'success': False, 'error': 'Nenhum campo para atualizar'}), 400
+
+    values.append(user_id)
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        c.execute(f"UPDATE users SET {', '.join(fields)} WHERE id=?", values)
+        conn.commit()
+    except sqlite3.IntegrityError:
+        conn.rollback()
+        conn.close()
+        return jsonify({'success': False, 'error': 'Email ja cadastrado'}), 400
+    updated = c.rowcount
+    conn.close()
+    if not updated:
+        return jsonify({'success': False, 'error': 'Usuario nao encontrado'}), 404
+    return jsonify({'success': True})
 @app.route('/api/admin/stats', methods=['GET'])
 def get_stats():
     conn = get_db()

@@ -297,7 +297,7 @@ async function toggleUserStatus(userId, currentActive) {
 
 async function renderAdminProducts(container) {
   let products = [];
-  try { products = await api.getProducts(); } catch (e) {}
+  try { products = await api.getProducts(null, { includeInactive: true }); } catch (e) {}
 
   container.innerHTML = `
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">

@@ -1,5 +1,9 @@
 // ── API CLIENT ────────────────────────────────────────────────────────────────
-const API_URL = "https://faceshop.onrender.com";
+const API_URL = window.FACESHOP_API_URL || (
+  ['localhost', '127.0.0.1', ''].includes(window.location.hostname)
+    ? 'http://localhost:5000'
+    : window.location.origin
+);
 const API_BASE = API_URL + "/api";
 
 // Cache simples para requisições GET
@@ -25,12 +29,14 @@ const api = {
       if (body) opts.body = JSON.stringify(body);
       
       const res = await fetch(API_BASE + path, opts);
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'Erro na requisição');
       
       // Cachear resultado se for GET
       if (method === 'GET') {
         apiCache.set(path, { data, time: Date.now() });
+      } else {
+        apiCache.clear();
       }
       
       return data;
@@ -47,7 +53,13 @@ const api = {
   updateFace: (d) => api.req('POST', '/auth/update-face', d),
 
   // Products
-  getProducts: (cat) => api.req('GET', '/products' + (cat ? `?category=${cat}` : '')),
+  getProducts: (cat, opts = {}) => {
+    const params = new URLSearchParams();
+    if (cat) params.set('category', cat);
+    if (opts.includeInactive) params.set('include_inactive', '1');
+    const query = params.toString();
+    return api.req('GET', '/products' + (query ? `?${query}` : ''));
+  },
   getProduct: (id) => api.req('GET', `/products/${id}`),
   createProduct: (d) => api.req('POST', '/products', d),
   updateProduct: (id, d) => api.req('PUT', `/products/${id}`, d),

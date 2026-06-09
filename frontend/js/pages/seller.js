@@ -46,7 +46,7 @@ function renderSellerTab(tab) {
 
 async function loadSellerProducts() {
   try {
-    sellerProducts = await api.getProducts();
+    sellerProducts = await api.getProducts(null, { includeInactive: true });
   } catch (e) {
     sellerProducts = [];
   }
